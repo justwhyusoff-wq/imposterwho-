@@ -1,27 +1,44 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CATEGORY_NAMES, getCustomWords } from '../words'
+import { getCookie, setCookie } from '../cookies'
 
 const ALL_CATEGORIES = ['Kull Chi', ...CATEGORY_NAMES, 'Custom']
 const ADMIN_CODE = 'admin'
 const MIN_CUSTOM = 5
 
-export default function Setup({ initialNames, onStart, onAdmin, onSettings }) {
-  const [names, setNames] = useState(
-    initialNames && initialNames.length >= 3 ? initialNames : ['', '', '']
-  )
-  const [imposterCount, setImposterCount] = useState(1)
-  const [category, setCategory] = useState('Kull Chi')
-  const [showAdminInput, setShowAdminInput] = useState(false)
-  const [adminInput, setAdminInput] = useState('')
-  const [adminError, setAdminError] = useState(false)
+function loadSaved() {
+  return {
+    names:    getCookie('game_names')    || ['', '', ''],
+    imposters: getCookie('game_imposters') ?? 1,
+    category:  getCookie('game_category') || 'Kull Chi',
+  }
+}
 
-  const filled = names.map((n) => n.trim()).filter(Boolean)
-  const maxImposters = Math.min(5, Math.max(1, filled.length - 1))
-  const count = Math.min(imposterCount, maxImposters)
+export default function Setup({ initialNames, onStart, onAdmin, onSettings }) {
+  const saved = loadSaved()
+
+  const [names, setNames] = useState(
+    initialNames && initialNames.length >= 3 ? initialNames : saved.names
+  )
+  const [imposterCount, setImposterCount] = useState(saved.imposters)
+  const [category, setCategory]           = useState(saved.category)
+  const [showAdminInput, setShowAdminInput] = useState(false)
+  const [adminInput, setAdminInput]         = useState('')
+  const [adminError, setAdminError]         = useState(false)
+
+  // Save to cookies on every change
+  useEffect(() => { setCookie('game_names', names) },        [names])
+  useEffect(() => { setCookie('game_imposters', imposterCount) }, [imposterCount])
+  useEffect(() => { setCookie('game_category', category) },   [category])
+
+  const filled      = names.map((n) => n.trim()).filter(Boolean)
+  // stepper max based on total slots so it works before names are typed
+  const maxImposters = Math.min(5, Math.max(1, names.length - 1))
+  const count        = Math.min(imposterCount, maxImposters)
   const activeCustom = getCustomWords()
-  const customCount = activeCustom.length
+  const customCount  = activeCustom.length
   const enoughCustom = category !== 'Custom' || customCount >= MIN_CUSTOM
-  const canStart = filled.length >= 3 && filled.length === names.length && enoughCustom
+  const canStart     = filled.length >= 3 && filled.length === names.length && enoughCustom
 
   function setName(i, value) {
     const next = [...names]
@@ -38,7 +55,10 @@ export default function Setup({ initialNames, onStart, onAdmin, onSettings }) {
   }
 
   function start() {
-    onStart({ names: filled, imposterCount: count, category })
+    // clamp count against actual filled players
+    const safeMax   = Math.max(1, filled.length - 1)
+    const safeCount = Math.min(count, safeMax)
+    onStart({ names: filled, imposterCount: safeCount, category })
   }
 
   function tryAdmin() {
@@ -104,7 +124,7 @@ export default function Setup({ initialNames, onStart, onAdmin, onSettings }) {
       <section className="card">
         <div className="card-head">
           <h2>L-La3bin</h2>
-          <span className="pill">{filled.length} zad</span>
+          <span className="pill">{filled.length} / {names.length}</span>
         </div>
 
         <div className="player-list">
@@ -142,6 +162,7 @@ export default function Setup({ initialNames, onStart, onAdmin, onSettings }) {
       <section className="card">
         <div className="card-head">
           <h2>L-Kddabin</h2>
+          <span className="pill">max {maxImposters}</span>
         </div>
         <div className="stepper">
           <button
@@ -186,17 +207,17 @@ export default function Setup({ initialNames, onStart, onAdmin, onSettings }) {
           </p>
         )}
         {category === 'Custom' && enoughCustom && (
-          <p className="hint custom-hint">
-            ✅ {customCount} klma active — jahzin!
-          </p>
+          <p className="hint custom-hint">✅ {customCount} klma active — jahzin!</p>
         )}
       </section>
 
       <button className="primary-btn big" onClick={start} disabled={!canStart}>
-        {!filled.length || filled.length < 3
+        {!canStart && filled.length < 3
           ? 'Dkhel 3la 7al 3 isimat'
-          : !enoughCustom
+          : !canStart && !enoughCustom
           ? `Custom: 7tajin ${MIN_CUSTOM - customCount} klmat ziyada`
+          : !canStart
+          ? 'Kmel l-isimat kollhom'
           : 'Bda l-Li3ba 🎮'}
       </button>
 
